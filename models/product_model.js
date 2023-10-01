@@ -24,145 +24,59 @@ const testDbConnection = async () => {
 
 testDbConnection();
 
-const Product = sequelize.define(
-  "product",
-  {
-    images: {
-      type: DataTypes.ARRAY(DataTypes.STRING),
-      allowNull: true,
-    },
-  },
-  { timestamps: false }
-);
-
-const ProductInfo = sequelize.define(
-  "product_info",
+const FrameMolding = sequelize.define(
+  "frame_molding",
   {
     name: {
       type: DataTypes.STRING,
       allowNull: false,
+    },
+    price: {
+      type: DataTypes.DECIMAL,
+      allowNull: false,
+    },
+    width: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    material: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    images: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
     },
     description: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    type: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
   },
   { timestamps: false }
 );
 
-ProductInfo.hasMany(Product, {
-  foreignKey: { name: "product_info_id", allowNull: false },
-  onDelete: "CASCADE",
-});
-Product.belongsTo(ProductInfo, {
-  foreignKey: { name: "product_info_id", allowNull: false },
-  onDelete: "CASCADE",
-});
-
-const ProductProperty = sequelize.define(
-  "product_property",
+const Color = sequelize.define(
+  "color",
   {
     name: {
       type: DataTypes.STRING,
       allowNull: false,
     },
-    value: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    eng_name: {
-      type: DataTypes.STRING,
+    code: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
       allowNull: false,
     },
   },
   { timestamps: false }
 );
 
-const ProductPropertyLink = sequelize.define(
-  "product_property_link",
-  {
-    product_id: {
-      type: DataTypes.INTEGER,
-      references: {
-        model: Product, // 'Movies' would also work
-        key: "id",
-        allowNull: false,
-      },
-    },
-    property_id: {
-      type: DataTypes.INTEGER,
-      references: {
-        model: ProductProperty, // 'Actors' would also work
-        key: "id",
-        allowNull: false,
-      },
-    },
-  },
-  { timestamps: false }
-);
-
-Product.belongsToMany(ProductProperty, {
-  foreignKey: { name: "product_id", allowNull: false },
-  through: ProductPropertyLink,
-});
-ProductProperty.belongsToMany(Product, {
-  foreignKey: { name: "property_id", allowNull: false },
-  through: ProductPropertyLink,
-});
-
-const ProductChild = sequelize.define(
-  "product_child",
-  {
-    count: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    price: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-    },
-  },
-  { timestamps: false }
-);
-
-Product.hasMany(ProductChild, {
-  foreignKey: { name: "product_id", allowNull: false },
-  onDelete: "CASCADE",
-});
-ProductChild.belongsTo(Product, {
-  foreignKey: { name: "product_id", allowNull: false },
+Color.hasMany(FrameMolding, {
+  foreignKey: { name: "color_id", allowNull: false },
   onDelete: "CASCADE",
 });
 
-const ChildProperty = sequelize.define(
-  "child_property",
-  {
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    value: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    eng_name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-  },
-  { timestamps: false }
-);
-
-ChildProperty.hasMany(ProductChild, {
-  foreignKey: { name: "property_id", allowNull: false },
-  onDelete: "CASCADE",
-});
-ProductChild.belongsTo(ChildProperty, {
-  foreignKey: { name: "property_id", allowNull: false },
+FrameMolding.belongsTo(Color, {
+  foreignKey: { name: "color_id", allowNull: false },
   onDelete: "CASCADE",
 });
 
@@ -172,7 +86,6 @@ sequelize.sync().then(() => {
 
 function getProducts(params) {
   return new Promise(function (resolve, reject) {
-    const querySettings = {};
     const sort =
       params.sortBy && params.orderBy
         ? [params.sortBy, params.orderBy]
@@ -186,21 +99,8 @@ function getProducts(params) {
 
     const func = async () => {
       try {
-        const result = await Product.findAndCountAll({
-          attributes: ["id", "images"],
-          distinct: true,
-          limit: 12,
-
-          include: [
-            { model: ProductInfo },
-            { model: ProductProperty, through: { attributes: [] } },
-            {
-              model: ProductChild,
-              attributes: ["id", "price", "count"],
-              include: [{ model: ChildProperty }],
-              order: [["price", "asc"]],
-            },
-          ],
+        const result = await FrameMolding.findAndCountAll({
+          include: [{ model: Color }],
         });
         resolve(result);
       } catch (err) {
@@ -223,7 +123,10 @@ function getProductById(id) {
           attributes: ["id", "images"],
           include: [
             { model: ProductInfo },
-            { model: ProductProperty, through: { attributes: [] } },
+            {
+              model: ProductProperty,
+              through: { attributes: [] },
+            },
             {
               model: ProductChild,
               attributes: ["id", "price", "count"],
@@ -246,40 +149,36 @@ function getFilters() {
   return new Promise(function (resolve, reject) {
     const func = async () => {
       try {
-        const productProperties = await ProductProperty.findAll({});
-        const childProperties = await ChildProperty.findAll({});
-        const productResult = productProperties.reduce((newArr, prop) => {
-          const obj_index = newArr.findIndex((o) => o.name === prop.name);
+        const filter_names = [
+          { name: "материал", eng_name: "material" },
+          { name: "размер", eng_name: "width" },
+          { name: "цена", eng_name: "price" },
+          { name: "цвет", eng_name: "color" },
+        ];
 
-          if (obj_index !== -1) {
-            newArr[obj_index].filters.push({ id: prop.id, value: prop.value });
-          } else {
-            newArr.push({
-              name: prop.name,
-              eng_name: prop.eng_name,
-              filters: [{ id: prop.id, value: prop.value }],
+        const result = await Promise.all(
+          filter_names.map(async (filter_name) => {
+            const filters = await FrameMolding.findAll({
+              attributes:
+                filter_name.eng_name === "color" ? [] : [filter_name.eng_name],
+              distinct: true,
+              group:
+                filter_name.eng_name === "color"
+                  ? undefined
+                  : [filter_name.eng_name],
+              include:
+                filter_name.eng_name === "color"
+                  ? [{ model: Color, distinct: true, group: ["id"] }]
+                  : undefined,
             });
-          }
-          return newArr;
-        }, []);
+            return {
+              ...filter_name,
+              filters: filters.map((filter) => filter[filter_name.eng_name]),
+            };
+          })
+        );
 
-        const childResult = childProperties.reduce((newArr, prop) => {
-          const obj_index = newArr.findIndex((o) => o.name === prop.name);
-
-          if (obj_index !== -1) {
-            newArr[obj_index].filters.push({ id: prop.id, value: prop.value });
-          } else {
-            newArr.push({
-              name: prop.name,
-              eng_name: prop.eng_name,
-              filters: [{ id: prop.id, value: prop.value }],
-            });
-          }
-          return newArr;
-        }, []);
-
-        const result = { product: productResult, child: childResult };
-
+        console.log(result[0].filters);
         resolve(result);
       } catch (err) {
         console.log(err);
